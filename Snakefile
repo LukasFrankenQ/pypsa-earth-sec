@@ -200,7 +200,7 @@ rule prepare_sector_network:
         solar_thermal="resources/demand/heat/solar_thermal_{demand}_s{simpl}_{clusters}_{planning_horizons}.csv",
         district_heat_share="resources/demand/heat/district_heat_share_{demand}_s{simpl}_{clusters}_{planning_horizons}.csv",
         biomass_transport_costs="data/temp_hard_coded/biomass_transport_costs.csv",
-        egs_potentials="resources/egs_potential_s{simpl}_{clusters}.csv",
+        egs_potential="resources/egs_potential_s{simpl}_{clusters}.csv",
         shapes_path=pypsaearth(
             "resources/bus_regions/regions_onshore_elec_s{simpl}_{clusters}.geojson"
         ),

@@ -200,6 +200,7 @@ rule prepare_sector_network:
         solar_thermal="resources/demand/heat/solar_thermal_{demand}_s{simpl}_{clusters}_{planning_horizons}.csv",
         district_heat_share="resources/demand/heat/district_heat_share_{demand}_s{simpl}_{clusters}_{planning_horizons}.csv",
         biomass_transport_costs="data/temp_hard_coded/biomass_transport_costs.csv",
+        egs_potentials="resources/egs_potential_s{simpl}_{clusters}.csv",
         shapes_path=pypsaearth(
             "resources/bus_regions/regions_onshore_elec_s{simpl}_{clusters}.geojson"
         ),
@@ -650,6 +651,28 @@ rule build_industrial_database:
         industrial_database="data/industrial_database.csv",
     script:
         "scripts/build_industrial_database.py"
+
+
+rule build_egs_potentials:
+    params:
+        enhanced_geothermal=config["sector"]["enhanced_geothermal"],
+    input:
+        egs_potential="data/egs_potential_data.geojson",
+        regions_onshore=pypsaearth(
+            "resources/bus_regions/regions_onshore_elec_s{simpl}_{clusters}.geojson"
+        ),
+    output:
+        egs_potentials="resources/egs_potential_s{simpl}_{clusters}.csv",
+    threads: 2
+    resources:
+        mem_mb=10000,
+    benchmark:
+        (
+            RDIR
+            + "/benchmarks/build_egs_potentials/egs_potential_s{simple}_{clusters}"
+        )
+    script:
+        "scripts/build_egs_potentials.py"
 
 
 rule prepare_db:

@@ -161,7 +161,15 @@ def add_h2_network_cap(n, cap):
     if h2_network.index.empty or ("Link", "p_nom") not in n.variables.index:
         return
     h2_network_cap = get_var(n, "Link", "p_nom")
-    lhs = linexpr((h2_network.length, h2_network_cap[h2_network.index])).sum()
+    subset_index = h2_network.index.intersection(h2_network_cap.index)
+    diff_index = h2_network_cap.index.difference(subset_index)
+    if len(diff_index) > 0:
+        logger.warning(
+            f"Impossible to set H2 cap for the following links: {diff_index}"
+        )
+    lhs = linexpr(
+        (h2_network.loc[subset_index, "length"], h2_network_cap[subset_index])
+    ).sum()
     # lhs = linexpr((1, h2_network_cap[h2_network.index])).sum()
     rhs = cap * 1000
     define_constraints(n, lhs, "<=", rhs, "h2_network_cap")
@@ -608,6 +616,10 @@ if __name__ == "__main__":
         n.meta = dict(snakemake.config, **dict(wildcards=dict(snakemake.wildcards)))
         n.export_to_netcdf(snakemake.output[0])
 
+    # logging output to the terminal
+    print("Objective function: {}".format(n.objective))
+
+    # logging output to file
     logger.info("Objective function: {}".format(n.objective))
     logger.info("Objective constant: {}".format(n.objective_constant))
     logger.info("Maximum memory usage: {}".format(mem.mem_usage))

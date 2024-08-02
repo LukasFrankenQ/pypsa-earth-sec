@@ -54,10 +54,12 @@ if __name__ == "__main__":
 
 
     regions = gpd.read_file(snakemake.input.regions_onshore).set_index("name")
-    demands = ["AC", "industrial_hot", "industrial_medium"]
-    demand_array = xr.open_dataarray(snakemake.input.demand_array)
 
-    egs_potentials = pd.read_csv('egs_dummy_data.csv', index_col=[0,1,2])
+    demands = ["AC", "industrial_hot", "industrial_medium"]
+    # demand_array = xr.open_dataarray(snakemake.input.demand_array)
+
+    # egs_potentials = pd.read_csv('egs_dummy_data.csv', index_col=[0,1,2])
+    egs_potentials = pd.read_csv(snakemake.input["egs_potential"], index_col=[0,1,2])
     gdf = gpd.GeoDataFrame(
         egs_potentials,
         geometry=gpd.points_from_xy(
@@ -100,7 +102,6 @@ if __name__ == "__main__":
         ss.index = pd.MultiIndex.from_product([[name], ss.index], names=['network_region', 'capex'])
 
         regional_potentials.append(ss) 
-    
 
         # to be included once heat usage data is available
         """
@@ -119,4 +120,4 @@ if __name__ == "__main__":
                 demand = get_demands(demand_array, geom, demand_geoms)
         """
 
-    pd.concat(regional_potentials).to_csv(snakemake.output.regional_potentials)
+    pd.concat(regional_potentials).dropna().to_csv(snakemake.output.egs_potentials)

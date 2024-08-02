@@ -657,22 +657,37 @@ rule build_egs_potentials:
     params:
         enhanced_geothermal=config["sector"]["enhanced_geothermal"],
     input:
-        egs_potential="data/egs_potential_data.geojson",
-        regions_onshore=pypsaearth(
-            "resources/bus_regions/regions_onshore_elec_s{simpl}_{clusters}.geojson"
-        ),
+        # egs_potential="data/egs_potential_data.geojson",
+        egs_potential="temp/egs_dummy_data.csv",
+        # regions_onshore=pypsaearth(
+            # "resources/bus_regions/regions_onshore_elec_s{simpl}_{clusters}.geojson"
+        # ),
+        regions_onshore="temp/regions.geojson",
     output:
-        egs_potentials="resources/egs_potential_s{simpl}_{clusters}.csv",
+        # egs_potentials="resources/egs_potential_s{simpl}_{clusters}.csv",
+        egs_potentials="temp/potentials.csv",
     threads: 2
     resources:
         mem_mb=10000,
     benchmark:
         (
             RDIR
-            + "/benchmarks/build_egs_potentials/egs_potential_s{simple}_{clusters}"
+            # + "/benchmarks/build_egs_potentials/egs_potential_s{simpl}_{clusters}"
+            + "/benchmarks/build_egs_potentials/egs_potential"
         )
     script:
         "scripts/build_egs_potentials.py"
+
+
+rule add_enhanced_geothermal:
+    input:
+        egs_potential="temp/potentials.csv",
+        network="temp/before.nc",
+        overrides="data/override_component_attrs",
+    output:
+        network="temp/after.nc",
+    script:
+        "scripts/add_enhanced_geothermal.py"
 
 
 rule prepare_db:

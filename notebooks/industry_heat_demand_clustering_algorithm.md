@@ -5,6 +5,18 @@
 
 - __define__ ``maximum_network_extent``        [ __km__ ] <span style="color: red;">InnerSpace</span>
 - __define__ ``get_egs_plant_cost()`` [ __$/kWth__ ] __#__ evaluates cost of geothermal site based on ``x``, ``y``, ``demand``, ``temperature`` <span style="color: red;">Data and Method InnerSpace, Implementation Lukas</span> <br><br>
+
+#### Algorithm Summary
+
+This algorithm estimates the supply-curve to meet industrial heating demands of varying temperatures and volumes through EGS. It identifies potential clusters of sites that are eligible for a heat-network (based on the passed `maximum_network_extent`). These networks can achieve better economies of scale, which can outwigh the additional cost of piping which is also considered here.
+For each cluster, the algorithm estimates some basic properties of the cost-optimal piping network that is suitable to meet all heat demands in the network. It only considers layouts where temperature is highest at the EGS site, and monotonically decreases as heat is distributed through the network. The location of the EGS plant also minimizes the required piping volume.
+From the size of the demand, each cluster is assigned an investment (and operational) cost (see `get_egs_plant_cost()`) of a hypothetical EGS plant. Demands and investment/operations costs are then compiled into an EGS supply curve, that can be inserted into the energy system model.
+For full functionality, the algorithm should be enabled to query a method provided by Project InnerSpace that returns investment and operational cost of an EGS plant based on plant coordinates, size and temperature needs.
+
+
+#### Pseudocode
+
+
 - __define__ ``region_supply_curves`` ← empty dict <br><br>
 - __for__ ``region`` in network_regions:
     - ``demand_sites`` ← _load_region_sites_(``region``)

@@ -24,38 +24,57 @@ import numpy as np
 import pandas as pd
 import networkx as nx
 import geopandas as gpd
+from typing import Iterable
 from collections import deque
 from itertools import product
 from itertools import combinations
+from pyproj import Proj, Transformer
 from shapely.geometry import MultiPoint
 
 import matplotlib.pyplot as plt
 
 
+import sys
+from pathlib import Path
+sys.path.append(str(Path.cwd().parent / 'notebooks'))
+from vincenty import V_inv
+
+
 #####################        TEMPORARY FUNCTIONS        #####################
-def get_cost_evalator_cost(lower, upper, demand):
-    opex_factor = 0.01
-    cost = (lower + (upper - lower)) / demand
-    return cost, cost * opex_factor
+# def get_cost_evalator_cost(lower, upper, demand):
+#     opex_factor = 0.01
+#     cost = (lower + (upper - lower)) / demand
+#     return cost, cost * opex_factor
 
 
-def get_drilling():
+def get_plant_capex(total_demand):
 
-    default_gradient = 250 / 10
-    gradient_dev = np.random.normal(1, 0.2)
+    # expects demand value in MWhth for annual conumption
+    # return a (ballpark figure) of the capex in $/MWth
+    # based on typical values for EGS plants in $/kW
+    # assuming that the plant is running at full capacity
 
-    drilling_cost_factor = 100
+    # further assumed economies of scale:
+    # at 1 MWth, capex is $7000/kWth
+    # at 100 MWth, capex is $2000/kWth
+    # Define the known data points
 
-    depth = np.arange(0, 10, 100)
-    temp = default_gradient * gradient_dev * depth
+    # returns cost in $/MWth
 
-    cost = drilling_cost_factor * depth
+    def get_cost(cap):
+        if cap > 100:
+            return 2000
+        else:
+            # linear interpolation
+            return 7000 - 50 * cap
 
-    return depth, cost, temp
+    avg_demand = total_demand / 8760
+    
 
-
-def get_plant_capex(demand):
-    return 500 + 1000 / (demand * 2)
+    if isinstance(avg_demand, Iterable):
+        return [get_cost(d) * 1000 for d in avg_demand] 
+    else:
+        return get_cost(avg_demand) * 1000
 
 
 ##################         CLUSTERING HELPERS          ####################
@@ -223,9 +242,56 @@ def can_traverse_monotonically_decreasing(tree, values):
     return False
 
 
-def get_costoptimal_network(sites, temps, caps):
+# pipe_capex = 500000 # $/MWkm
+# pipe_capex = 1000 # $/MWkm
+pipe_capex = 2000 # $/m
 
-    pipe_cost = 0.1 # $/GWkm
+from networkx.algorithms.approximation.traveling_salesman import traveling_salesman_problem
+
+def get_simple_costoptimal_network(sites):
+
+    G = nx.Graph()
+
+    for i, (x, y) in enumerate(sites):
+        G.add_node(
+            i,
+            pos=(x, y),
+            )
+    hold = G.copy()
+    
+    for i in range(len(sites)):
+        for j in range(i + 1, len(sites)):
+
+            length = np.linalg.norm(np.array(sites[i]) - np.array(sites[j]))
+            edge_weight = length * pipe_capex * 2 # 2 because there is a hot and cold cycle
+
+            G.add_edge(i, j, weight=edge_weight)
+
+    G.remove_edges_from(nx.selfloop_edges(G))
+
+    # T = nx.minimum_spanning_tree(G, weight='weight', algorithm='kruskal')
+    # hold = nx.minimum_spanning_tree(G, weight='weight', algorithm='prim')
+    # total_cost = 0
+    # for u, v, data in hold.edges(data=True):
+    #     cost = data.get('cost', 0)
+    #     total_cost += cost
+
+    node_list = traveling_salesman_problem(G, weight='weight')
+    
+    # total_cost = G.get_edge_data(node_list[-1], node_list[0])['weight']
+    # hold.add_edge(node_list[-1], node_list[0])
+
+    total_cost = 0
+
+    for u, v in zip(node_list[:-1], node_list[1:]):
+        hold.add_edge(u, v)
+        total_cost += G.get_edge_data(u, v)['weight']
+
+    return hold, total_cost
+    
+
+
+def get_costoptimal_network(sites, temps, caps):
 
     # function to get the capacity needed for each pipe
     def compute_subtree_sums(tree, values, current_node, parent_node, edge_values):
@@ -291,7 +357,9 @@ def get_costoptimal_network(sites, temps, caps):
             p1 = hold.nodes[edge[0]]['pos']
             p2 = hold.nodes[edge[1]]['pos']
 
-            total_pipe_cost += value * np.linalg.norm(np.array(p1) - np.array(p2)) * pipe_cost
+            dist = V_inv(p1, p2)[0]
+            # total_pipe_cost += value / 8760 * np.linalg.norm(np.array(p1) - np.array(p2))
+            total_pipe_cost += value / 8760 * dist
 
         network_cost.append(total_pipe_cost)
 
@@ -337,7 +405,7 @@ def get_partitions(elements):
     return remove_permutations(all_partitions)
 
 
-def get_heat_network(xy: np.array, temps: list, caps: list, pipe_price: float):
+def get_heat_network(xy: np.array, temps: list, caps: list):
     
     assert len(xy) == len(temps), 'Length of xy and temperatures must be the same'
     assert len(xy) == len(caps), 'Length of xy and capacities must be the same'
@@ -396,7 +464,8 @@ def get_heat_network(xy: np.array, temps: list, caps: list, pipe_price: float):
                 np.vstack([xy, well_coords])
             )
 
-            G, pipe_volume = get_costoptimal_network(layout, temps + [max(temps) + 1], caps + [0])
+            # G, pipe_volume = get_costoptimal_network(layout, temps + [max(temps) + 1], caps + [0])
+            G, pipe_volume = get_simple_costoptimal_network(layout)
 
             '''
             _, ax = plt.subplots(figsize=(3, 3))
@@ -413,7 +482,7 @@ def get_heat_network(xy: np.array, temps: list, caps: list, pipe_price: float):
             pipe_lengths.append(pipe_volume)
 
         if not pipe_lengths:
-            return np.nan
+            return sum(caps), np.nan
 
         results = pd.DataFrame({
             'pipe_lengths': pipe_lengths,
@@ -422,9 +491,9 @@ def get_heat_network(xy: np.array, temps: list, caps: list, pipe_price: float):
         })
 
         results = results.sort_values('pipe_lengths').iloc[0]
-        pipe_cost = results.loc['pipe_lengths'] / 360 * 6371 * pipe_price
+        pipe_cost = results.loc['pipe_lengths'] * pipe_capex
 
-        return sum(caps), pipe_cost + get_plant_capex(sum(caps))
+        return sum(caps), pipe_cost#  + get_plant_capex(sum(caps))
 
 
 def plot_network(G, sites, caps, temps):
@@ -456,6 +525,50 @@ def plot_network(G, sites, caps, temps):
         linewidth=1,
         s=np.array(caps) * 30,
         )
+    
+    for i, (x, y) in enumerate(sites):
+        ax.text(x, y, f'{i:.0f}', ha='center', va='center')
 
     # ax.set_title(f'Total Pipe Cost: {total_pipe_cost:.2f}')
     plt.show()
+
+
+def coords_to_relative_utm(coords):
+    """
+    Transforms a list of longitude and latitude coordinates to UTM coordinates relative to the centroid.
+
+    Parameters:
+    - coords: list of tuples
+        List containing (longitude, latitude) tuples.
+
+    Returns:
+    - relative_coords_km: numpy.ndarray
+        Array of transformed coordinates in kilometers relative to the centroid.
+    """
+    coords_array = np.array(coords)
+    lons = coords_array[:, 0]
+    lats = coords_array[:, 1]
+
+    centroid_lon = np.mean(lons)
+    centroid_lat = np.mean(lats)
+
+    utm_zone = int(np.floor((centroid_lon + 180) / 6) % 60) + 1
+    hemisphere = 'north' if centroid_lat >= 0 else 'south'
+
+    utm_proj = Proj(proj='utm', zone=utm_zone, hemisphere=hemisphere)
+
+    transformer = Transformer.from_proj(
+        proj_from='epsg:4326',  # WGS84 Latitude and Longitude
+        proj_to=utm_proj,
+        always_xy=True
+    )
+
+    eastings, northings = transformer.transform(lons, lats)
+    centroid_easting, centroid_northing = transformer.transform(centroid_lon, centroid_lat)
+
+    relative_eastings = eastings - centroid_easting
+    relative_northings = northings - centroid_northing
+
+    relative_coords = np.column_stack((relative_eastings, relative_northings))
+
+    return relative_coords

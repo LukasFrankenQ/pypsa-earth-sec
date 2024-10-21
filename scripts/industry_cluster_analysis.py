@@ -244,11 +244,11 @@ def can_traverse_monotonically_decreasing(tree, values):
 
 # pipe_capex = 500000 # $/MWkm
 # pipe_capex = 1000 # $/MWkm
-pipe_capex = 2000 # $/m
+# pipe_capex = 1700 # $/m
 
 from networkx.algorithms.approximation.traveling_salesman import traveling_salesman_problem
 
-def get_simple_costoptimal_network(sites):
+def get_simple_costoptimal_network(sites, pipe_capex=1700):
 
     G = nx.Graph()
 
@@ -267,25 +267,19 @@ def get_simple_costoptimal_network(sites):
 
             G.add_edge(i, j, weight=edge_weight)
 
-    G.remove_edges_from(nx.selfloop_edges(G))
-
-    # T = nx.minimum_spanning_tree(G, weight='weight', algorithm='kruskal')
-    # hold = nx.minimum_spanning_tree(G, weight='weight', algorithm='prim')
-    # total_cost = 0
-    # for u, v, data in hold.edges(data=True):
-    #     cost = data.get('cost', 0)
-    #     total_cost += cost
-
-    node_list = traveling_salesman_problem(G, weight='weight')
-    
-    # total_cost = G.get_edge_data(node_list[-1], node_list[0])['weight']
-    # hold.add_edge(node_list[-1], node_list[0])
-
+    T = nx.minimum_spanning_tree(G, weight='weight', algorithm='kruskal')
+    # T = nx.minimum_spanning_tree(G, weight='weight', algorithm='prim')
     total_cost = 0
+    for _, _, data in T.edges(data=True):
+        total_cost += data.get('weight', 0)
 
-    for u, v in zip(node_list[:-1], node_list[1:]):
-        hold.add_edge(u, v)
-        total_cost += G.get_edge_data(u, v)['weight']
+    # G.remove_edges_from(nx.selfloop_edges(G))
+    # node_list = traveling_salesman_problem(G, weight='weight')
+    # total_cost = 0
+
+    # for u, v in zip(node_list[:-1], node_list[1:]):
+        # hold.add_edge(u, v)
+        # total_cost += G.get_edge_data(u, v)['weight']
 
     return hold, total_cost
     
@@ -405,7 +399,7 @@ def get_partitions(elements):
     return remove_permutations(all_partitions)
 
 
-def get_heat_network(xy: np.array, temps: list, caps: list):
+def get_heat_network(xy: np.array, temps: list, caps: list, pipe_capex=1700):
     
     assert len(xy) == len(temps), 'Length of xy and temperatures must be the same'
     assert len(xy) == len(caps), 'Length of xy and capacities must be the same'
@@ -465,7 +459,7 @@ def get_heat_network(xy: np.array, temps: list, caps: list):
             )
 
             # G, pipe_volume = get_costoptimal_network(layout, temps + [max(temps) + 1], caps + [0])
-            G, pipe_volume = get_simple_costoptimal_network(layout)
+            G, pipe_volume = get_simple_costoptimal_network(layout, pipe_capex)
 
             '''
             _, ax = plt.subplots(figsize=(3, 3))
@@ -526,8 +520,8 @@ def plot_network(G, sites, caps, temps):
         s=np.array(caps) * 30,
         )
     
-    for i, (x, y) in enumerate(sites):
-        ax.text(x, y, f'{i:.0f}', ha='center', va='center')
+    # for i, (x, y) in enumerate(sites):
+    #     ax.text(x, y, f'{i:.0f}', ha='center', va='center')
 
     # ax.set_title(f'Total Pipe Cost: {total_pipe_cost:.2f}')
     plt.show()

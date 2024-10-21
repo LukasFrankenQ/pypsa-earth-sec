@@ -430,10 +430,12 @@ def get_heat_network(xy: np.array, temps: list, caps: list, pipe_capex=1700):
 
         else:
 
-            num_well_test_sqrt = 10
+            num_well_test_sqrt = 3
 
-            xrange = np.linspace(xy[:, 1].min(), xy[:, 1].max(), num_well_test_sqrt)
-            yrange = np.linspace(xy[:, 0].min(), xy[:, 0].max(), num_well_test_sqrt)
+            # xrange = np.linspace(xy[:, 1].min(), xy[:, 1].max(), num_well_test_sqrt)
+            # yrange = np.linspace(xy[:, 0].min(), xy[:, 0].max(), num_well_test_sqrt)
+            xrange = np.linspace(xy[:, 1].min(), xy[:, 1].max(), num_well_test_sqrt)[[1]]
+            yrange = np.linspace(xy[:, 0].min(), xy[:, 0].max(), num_well_test_sqrt)[[1]]
 
             well_proposals = gpd.GeoSeries(
                 gpd.points_from_xy(

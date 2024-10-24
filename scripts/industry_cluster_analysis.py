@@ -24,14 +24,18 @@ import numpy as np
 import pandas as pd
 import networkx as nx
 import geopandas as gpd
+import matplotlib.pyplot as plt
+
 from typing import Iterable
 from collections import deque
 from itertools import product
 from itertools import combinations
+from sklearn.cluster import KMeans
 from pyproj import Proj, Transformer
 from shapely.geometry import MultiPoint
+from scipy.spatial import ConvexHull
+from scipy.spatial.distance import euclidean
 
-import matplotlib.pyplot as plt
 
 
 import sys
@@ -47,6 +51,7 @@ from vincenty import V_inv
 #     return cost, cost * opex_factor
 
 
+'''
 def get_plant_capex(total_demand):
 
     # expects demand value in MWhth for annual conumption
@@ -75,7 +80,15 @@ def get_plant_capex(total_demand):
         return [get_cost(d) * 1000 for d in avg_demand] 
     else:
         return get_cost(avg_demand) * 1000
+'''
 
+
+def round_borehole_capex(cap, one_drill_cap, one_drill_capex):
+
+    fraction = cap / one_drill_cap
+    n_wells = round(fraction)
+
+    return one_drill_capex * max(n_wells, fraction) / min(n_wells, fraction)
 
 ##################         CLUSTERING HELPERS          ####################
 '''
@@ -128,6 +141,106 @@ def measure_graph(G):
         total += np.linalg.norm(p1 - p2)
     
     return total
+
+
+def convex_hull_diameter(points):
+    """
+    Computes the diameter (maximum distance between any two points) of the convex hull.
+    
+    Parameters:
+    - points: numpy array of points on the convex hull
+
+    Returns:
+    - max_distance: maximum distance between any two points on the convex hull
+    """
+    n = len(points)
+    if n == 1:
+        return 0.0
+    elif n == 2:
+        return euclidean(points[0], points[1])
+    else:
+        # Rotating calipers algorithm
+        max_distance = 0.0
+        k = 1  # Initialize antipodal point
+        for i in range(n):
+            j = (i + 1) % n
+            while True:
+                next_k = (k + 1) % n
+                area = triangle_area(points[i], points[j], points[next_k])
+                next_area = triangle_area(points[i], points[j], points[k])
+                if area > next_area:
+                    k = next_k
+                else:
+                    break
+            distance = euclidean(points[i], points[k])
+            if distance > max_distance:
+                max_distance = distance
+        return max_distance
+
+
+def triangle_area(a, b, c):
+    """
+    Computes the area of a triangle given its vertices a, b, c.
+
+    Parameters:
+    - a, b, c: numpy arrays representing the vertices of the triangle
+
+    Returns:
+    - area: the area of the triangle
+    """
+    return 0.5 * abs((b[0] - a[0]) * (c[1] - a[1]) - 
+                     (c[0] - a[0]) * (b[1] - a[1]))
+
+
+def cluster_points(points, indices, threshold):
+    """
+    Recursively clusters points based on maximum pairwise distance.
+
+    Parameters:
+    - points: numpy array of shape (n_samples, n_features)
+    - indices: list of indices corresponding to the points
+    - threshold: maximum allowable distance within a cluster
+
+    Returns:
+    - clusters: list of tuples, each containing indices of a cluster
+    """
+    if len(points) <= 1:
+        return [tuple(indices)]
+
+    # Compute the convex hull
+    # if len(points) >= 3:
+    #     points += 1e-6 * np.random.randn(*points.shape)  # Add noise to avoid colinearity
+    #     hull = ConvexHull(points)
+    #     hull_points = points[hull.vertices]
+    # else:
+    #     hull_points = points  # For 2 points, the convex hull is the line segment itself
+
+    # Compute the diameter of the convex hull using rotating calipers algorithm
+    # max_distance = convex_hull_diameter(hull_points)
+
+    from scipy.spatial.distance import pdist
+
+    # Compute pairwise distances
+    pairwise_distances = pdist(points)
+    max_distance = pairwise_distances.max()
+
+    if max_distance <= threshold:
+        return [tuple(indices)]
+    else:
+        kmeans = KMeans(n_clusters=2)
+        labels = kmeans.fit_predict(points)
+
+        cluster1_points = points[labels == 0]
+        cluster1_indices = [indices[i] for i in range(len(indices)) if labels[i] == 0]
+
+        cluster2_points = points[labels == 1]
+        cluster2_indices = [indices[i] for i in range(len(indices)) if labels[i] == 1]
+
+        clusters = []
+        clusters.extend(cluster_points(cluster1_points, cluster1_indices, threshold))
+        clusters.extend(cluster_points(cluster2_points, cluster2_indices, threshold))
+
+        return clusters
 
 
 '''
@@ -282,7 +395,7 @@ def get_simple_costoptimal_network(sites, pipe_capex=1700):
         # total_cost += G.get_edge_data(u, v)['weight']
 
     return hold, total_cost
-    
+
 
 
 def get_costoptimal_network(sites, temps, caps):
@@ -399,8 +512,16 @@ def get_partitions(elements):
     return remove_permutations(all_partitions)
 
 
-def get_heat_network(xy: np.array, temps: list, caps: list, pipe_capex=1700):
-    
+def get_heat_network(
+        xy: np.array,
+        temps: list,
+        caps: list,
+        *args,
+        pipe_capex=1700):
+    '''
+    args are arguments passed to fct round_bolehole_capex
+    '''
+
     assert len(xy) == len(temps), 'Length of xy and temperatures must be the same'
     assert len(xy) == len(caps), 'Length of xy and capacities must be the same'
     if len(xy):
@@ -414,7 +535,8 @@ def get_heat_network(xy: np.array, temps: list, caps: list, pipe_capex=1700):
 
     if n == 1:
 
-        return caps[0], get_plant_capex(np.array(caps))[0]
+        # return caps[0], get_plant_capex(np.array(caps))[0]
+        return caps[0], round_borehole_capex(caps[0], *args)
 
     else:
 
@@ -463,16 +585,6 @@ def get_heat_network(xy: np.array, temps: list, caps: list, pipe_capex=1700):
             # G, pipe_volume = get_costoptimal_network(layout, temps + [max(temps) + 1], caps + [0])
             G, pipe_volume = get_simple_costoptimal_network(layout, pipe_capex)
 
-            '''
-            _, ax = plt.subplots(figsize=(3, 3))
-            for u, v in G.edges():
-                p1 = G.nodes[u]['pos']
-                p2 = G.nodes[v]['pos']
-                ax.plot([p1[0], p2[0]], [p1[1], p2[1]], 'k-', zorder=1)
-            ax.scatter(layout[:, 0], layout[:, 1], c=temps + [max(temps) + 1], cmap='magma', edgecolor='black', linewidth=1)
-            plt.show()
-            '''
-
             well_xs.append(well_coords[1])
             well_ys.append(well_coords[0])
             pipe_lengths.append(pipe_volume)
@@ -489,7 +601,8 @@ def get_heat_network(xy: np.array, temps: list, caps: list, pipe_capex=1700):
         results = results.sort_values('pipe_lengths').iloc[0]
         pipe_cost = results.loc['pipe_lengths'] * pipe_capex
 
-        return sum(caps), pipe_cost#  + get_plant_capex(sum(caps))
+        # return sum(caps), pipe_cost#  + get_plant_capex(sum(caps))
+        return sum(caps), pipe_cost / sum(caps) + round_borehole_capex(sum(caps), *args)
 
 
 def plot_network(G, sites, caps, temps):
@@ -535,15 +648,15 @@ def coords_to_relative_utm(coords):
 
     Parameters:
     - coords: list of tuples
-        List containing (longitude, latitude) tuples.
+        List containing (latitude, longitude) tuples.
 
     Returns:
     - relative_coords_km: numpy.ndarray
         Array of transformed coordinates in kilometers relative to the centroid.
     """
     coords_array = np.array(coords)
-    lons = coords_array[:, 0]
-    lats = coords_array[:, 1]
+    lons = coords_array[:, 1]
+    lats = coords_array[:, 0]
 
     centroid_lon = np.mean(lons)
     centroid_lat = np.mean(lats)

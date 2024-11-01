@@ -81,46 +81,45 @@ For each resulting network, the algorithm then computes the most efficient pipin
 #### Pseudocode
 
 
-- __define__ ``region_supply_curves`` ← empty dict <br><br>
-- __for__ ``region`` in network_regions:
-    - ``demand_sites`` ← _load_region_sites_(``region``)
+Algorithm EstimateSupplyCurveEGS
 
-    - __define__ ``supply_potential`` ← [ ]
-    - __define__ ``supply_capex`` ← [ ]
-    - `clusters` ← _DBScan_(``demand_sites``, ``max_network_extent``)
+Input:
+- DemandSites: List of industrial heating demand sites with their locations, temperature requirements, and volume demands
+- MaxNetworkExtent: Maximum feasible total network extent
+- MinEconomicDemand: Minimum demand (e.g., 10 MWth) for EGS viability
 
-    - __for__ ``cluster`` in ``clusters`` where size of cluster == 1:
-        
-        - __define__ ``plant_capex`` ← ``get_egs_plant_cost(cluster)``
-        - ``supply_potential``._append_(``cluster_peak_demand``)         __# skipped decision__
-        - ``supply_capex``._append_(``plant_capex``)
+Output:
+- SupplyCurve: Estimated cost to meet industrial heating demands through EGS
 
+Steps:
 
-    - __for__ ``cluster`` in ``clusters`` where size of cluster > 1:
+1. Initialize PotentialClusters as an empty list
+2. Filter out demands that requires temperatures above 250C 
 
-        - __define__ ``partitions`` ← _get_cluster_partitions_(``cluster``)
-        - __define__ ``partition_qualities`` ← [ ]  
+3. // Identify potential clusters based on spatial proximity
+4. For each site in DemandSites:
+    a. Perform Density-Based Scan to find neighboring sites within a proximity threshold
+    b. Form clusters of sites that are close enough for a heat network
+    c. Add these clusters to PotentialClusters
 
-        - __for__ ``partition`` in ``partitions``:
+5. // Split clusters exceeding maximum network extent
+6. For each cluster in PotentialClusters:
+    a. While TotalExtent(cluster) > MaxNetworkExtent:
+        i. Split cluster into smaller networks
+       ii. Recalculate TotalExtent for each new network
 
-            - __define__ ``network_costs`` ← [ ]
-            - __define__ ``network_capacities``  ← [ ]
+7. Initialize NetworkCosts as an empty list
 
-            - __for__ ``heat_network`` in ``partition``:
+8. // Compute efficient piping layout and costs for each network
+9. For each network in PotentialClusters:
+    a. ComputeMostEfficientPipingLayout(network)
+    b. Calculate PipingCost for the network
+    c. If TotalDemand(network) ≥ MinEconomicDemand:
+        i. Calculate EGSPlantCost based on TotalDemand
+       ii. TotalCost = PipingCost + EGSPlantCost
+      iii. Add (network, TotalCost) to NetworkCosts
 
-                - __if__ number of sites in heat_network == 1:
-                    - ``network_capacities``._append_(``heat_network_peak_demand``)         __# skipped decision__
-                    - ``network_costs``._append_(``plant_capex``)
+10. // Aggregate costs to form the supply curve
+11. SupplyCurve = AggregateCosts(NetworkCosts)
 
-                - __if__ number of sites in heat_network > 1:
-                    - // greedy approach: tests all potential site location within convex hull spanned by sites in network
-                    - ``heat_network`` ← _get_cost_optimal_heating_network_(``site_locations``, ``site_demands``, ``piping_cost``, ``temperatures``)  __# returns lowest cost piping configuration while ensuring monotonically decreasing temperature__
-
-                    - ``network_capacities``._append_(``heat_network_peak_demand``) 
-                    - ``network_costs``._append_(_get_plant_cost_(``heat_network``) + ``network_piping_costs``)
-                - ``partition_qualities``._append_(_sum_(``network_costs``))           
-
-        - __define__ ``partition`` ← _get_best_partition_(``partition_qualities``)
-        - _update_supply_(``supply_potential``, ``supply_capex``, ``data_of_best_partition``)
-
-    ``region_supply_curves``[``region``] ← _build_supply_curve_(``supply_potential``, ``supply_capex``)
+12. Return SupplyCurve

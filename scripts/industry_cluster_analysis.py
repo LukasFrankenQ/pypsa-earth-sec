@@ -37,7 +37,6 @@ from scipy.spatial import ConvexHull
 from scipy.spatial.distance import euclidean
 
 
-
 import sys
 from pathlib import Path
 sys.path.append(str(Path.cwd().parent / 'notebooks'))
@@ -361,7 +360,7 @@ def can_traverse_monotonically_decreasing(tree, values):
 
 from networkx.algorithms.approximation.traveling_salesman import traveling_salesman_problem
 
-def get_simple_costoptimal_network(sites, pipe_capex=1700):
+def get_simple_costoptimal_network(sites):#, pipe_capex=1700):
 
     G = nx.Graph()
 
@@ -376,15 +375,16 @@ def get_simple_costoptimal_network(sites, pipe_capex=1700):
         for j in range(i + 1, len(sites)):
 
             length = np.linalg.norm(np.array(sites[i]) - np.array(sites[j]))
-            edge_weight = length * pipe_capex * 2 # 2 because there is a hot and cold cycle
+            edge_weight = length# * pipe_capex
 
             G.add_edge(i, j, weight=edge_weight)
 
     T = nx.minimum_spanning_tree(G, weight='weight', algorithm='kruskal')
     # T = nx.minimum_spanning_tree(G, weight='weight', algorithm='prim')
-    total_cost = 0
+
+    total_length = 0
     for _, _, data in T.edges(data=True):
-        total_cost += data.get('weight', 0)
+        total_length += data.get('weight', 0)
 
     # G.remove_edges_from(nx.selfloop_edges(G))
     # node_list = traveling_salesman_problem(G, weight='weight')
@@ -394,7 +394,7 @@ def get_simple_costoptimal_network(sites, pipe_capex=1700):
         # hold.add_edge(u, v)
         # total_cost += G.get_edge_data(u, v)['weight']
 
-    return hold, total_cost
+    return hold, total_length
 
 
 
@@ -583,7 +583,8 @@ def get_heat_network(
             )
 
             # G, pipe_volume = get_costoptimal_network(layout, temps + [max(temps) + 1], caps + [0])
-            G, pipe_volume = get_simple_costoptimal_network(layout, pipe_capex)
+            # G, pipe_volume = get_simple_costoptimal_network(layout, pipe_capex)
+            G, pipe_volume = get_simple_costoptimal_network(layout)
 
             well_xs.append(well_coords[1])
             well_ys.append(well_coords[0])
@@ -599,10 +600,14 @@ def get_heat_network(
         })
 
         results = results.sort_values('pipe_lengths').iloc[0]
-        pipe_cost = results.loc['pipe_lengths'] * pipe_capex
+        pipe_cost = results.loc['pipe_lengths'] * pipe_capex * 2
 
         # return sum(caps), pipe_cost#  + get_plant_capex(sum(caps))
-        return sum(caps), pipe_cost / sum(caps) + round_borehole_capex(sum(caps), *args)
+
+        total_cost = pipe_cost / sum(caps) + round_borehole_capex(sum(caps), *args)
+        # print(f'multi; pipe cost: {pipe_cost}, sum caps: {sum(caps)}, borehole cost: {round_borehole_capex(sum(caps), *args)}, total cost: {total_cost}')
+
+        return sum(caps), total_cost
 
 
 def plot_network(G, sites, caps, temps):
@@ -635,10 +640,6 @@ def plot_network(G, sites, caps, temps):
         s=np.array(caps) * 30,
         )
     
-    # for i, (x, y) in enumerate(sites):
-    #     ax.text(x, y, f'{i:.0f}', ha='center', va='center')
-
-    # ax.set_title(f'Total Pipe Cost: {total_pipe_cost:.2f}')
     plt.show()
 
 

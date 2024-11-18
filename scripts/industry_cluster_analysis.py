@@ -206,17 +206,6 @@ def cluster_points(points, indices, threshold):
     if len(points) <= 1:
         return [tuple(indices)]
 
-    # Compute the convex hull
-    # if len(points) >= 3:
-    #     points += 1e-6 * np.random.randn(*points.shape)  # Add noise to avoid colinearity
-    #     hull = ConvexHull(points)
-    #     hull_points = points[hull.vertices]
-    # else:
-    #     hull_points = points  # For 2 points, the convex hull is the line segment itself
-
-    # Compute the diameter of the convex hull using rotating calipers algorithm
-    # max_distance = convex_hull_diameter(hull_points)
-
     from scipy.spatial.distance import pdist
 
     # Compute pairwise distances
@@ -238,6 +227,49 @@ def cluster_points(points, indices, threshold):
         clusters = []
         clusters.extend(cluster_points(cluster1_points, cluster1_indices, threshold))
         clusters.extend(cluster_points(cluster2_points, cluster2_indices, threshold))
+
+        return clusters
+
+
+def cluster_points_with_size(points, sizes, indices, threshold):
+    """
+    Recursively clusters points based on maximum pairwise distance.
+
+    Parameters:
+    - points: numpy array of shape (n_samples, n_features)
+    - sizes: numpy array of sizes corresponding to the points
+    - indices: list of indices corresponding to the points
+    - threshold: maximum allowable distance within a cluster
+
+    Returns:
+    - clusters: list of tuples, each containing indices of a cluster
+    """
+    if len(points) <= 1:
+        return [tuple(indices)]
+
+    from scipy.spatial.distance import pdist
+
+    # Compute pairwise distances
+    pairwise_distances = pdist(points)
+    max_distance = pairwise_distances.max()
+
+    if max_distance <= threshold and sum(sizes) < 30:
+        return [tuple(indices)]
+    else:
+        kmeans = KMeans(n_clusters=2)
+        labels = kmeans.fit_predict(points)
+
+        cluster1_points = points[labels == 0]
+        cluster1_sizes = sizes[labels == 0]
+        cluster1_indices = [indices[i] for i in range(len(indices)) if labels[i] == 0]
+
+        cluster2_points = points[labels == 1]
+        cluster2_sizes = sizes[labels == 1]
+        cluster2_indices = [indices[i] for i in range(len(indices)) if labels[i] == 1]
+
+        clusters = []
+        clusters.extend(cluster_points_with_size(cluster1_points, cluster1_sizes, cluster1_indices, threshold))
+        clusters.extend(cluster_points_with_size(cluster2_points, cluster2_sizes, cluster2_indices, threshold))
 
         return clusters
 
